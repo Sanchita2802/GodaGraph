@@ -1,0 +1,6 @@
+{
+  "name": "GodaGraph - Nashik Multimodal Journey Planner & DSA Engine",
+  "description": "Multimodal transit planner and Data Structures & Algorithms visualizer for Nashik, featuring custom graph routing, Pareto optimization, Pravah routing, Leaflet live map, and 3D Godavari scroll experience.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

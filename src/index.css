@@ -1,0 +1,121 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --bg-main: #FFF8F1;
+    --text-main: #3B2F4A;
+    --text-muted: #7E708E;
+    --surface-card: #FFFFFF;
+    --clay-shadow-outer: 0 16px 32px -8px rgba(138, 98, 77, 0.12), 0 6px 16px -4px rgba(138, 98, 77, 0.08);
+    --clay-shadow-inner: inset 0 2px 4px rgba(255, 255, 255, 0.9), inset 0 -3px 6px rgba(186, 155, 140, 0.25);
+    --clay-btn-outer: 0 10px 20px -4px rgba(224, 85, 75, 0.25), 0 4px 8px -2px rgba(224, 85, 75, 0.15);
+    --clay-btn-inner: inset 0 2px 3px rgba(255, 255, 255, 0.7), inset 0 -2px 4px rgba(160, 40, 32, 0.3);
+  }
+
+  .dark {
+    --bg-main: #14121C;
+    --text-main: #F2EEF9;
+    --text-muted: #9E94B3;
+    --surface-card: #1F1B2B;
+    --clay-shadow-outer: 0 16px 36px -8px rgba(0, 0, 0, 0.6), 0 6px 16px -4px rgba(0, 0, 0, 0.4);
+    --clay-shadow-inner: inset 0 1px 2px rgba(255, 255, 255, 0.12), inset 0 -3px 6px rgba(10, 8, 15, 0.7);
+    --clay-btn-outer: 0 10px 24px -4px rgba(224, 85, 75, 0.4), 0 4px 8px -2px rgba(0, 0, 0, 0.5);
+    --clay-btn-inner: inset 0 1px 2px rgba(255, 255, 255, 0.25), inset 0 -2px 4px rgba(0, 0, 0, 0.6);
+  }
+
+  body {
+    font-family: 'Onest', 'Noto Sans Devanagari', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  h1, h2, h3, .font-display {
+    font-family: 'Fraunces', 'Onest', serif;
+  }
+}
+
+/* Claymorphism Utility Classes */
+.clay-card {
+  border-radius: 28px;
+  background: var(--surface-card);
+  box-shadow: var(--clay-shadow-outer), var(--clay-shadow-inner);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.dark .clay-card {
+  background: #1F1B2B;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.clay-button {
+  border-radius: 9999px;
+  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  box-shadow: var(--clay-btn-outer), var(--clay-btn-inner);
+}
+
+.clay-button:active {
+  transform: scale(0.97);
+  box-shadow: 0 4px 8px -2px rgba(0, 0, 0, 0.15), inset 0 3px 5px rgba(0, 0, 0, 0.2);
+}
+
+.clay-pill {
+  border-radius: 9999px;
+  box-shadow: 0 4px 10px -2px rgba(0,0,0,0.06), inset 0 2px 3px rgba(255,255,255,0.8), inset 0 -2px 3px rgba(0,0,0,0.06);
+}
+
+.dark .clay-pill {
+  box-shadow: 0 4px 10px -2px rgba(0,0,0,0.3), inset 0 1px 2px rgba(255,255,255,0.1), inset 0 -2px 3px rgba(0,0,0,0.5);
+}
+
+.clay-input {
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1.5px solid rgba(224, 85, 75, 0.15);
+  box-shadow: inset 0 3px 6px rgba(0,0,0,0.04), 0 2px 4px rgba(255,255,255,0.8);
+  transition: all 0.2s ease;
+}
+
+.clay-input:focus {
+  border-color: #E0554B;
+  background: #FFFFFF;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.03), 0 0 0 3px rgba(224, 85, 75, 0.2);
+}
+
+.dark .clay-input {
+  background: #252033;
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 3px 6px rgba(0,0,0,0.35), 0 1px 2px rgba(255,255,255,0.04);
+}
+
+.dark .clay-input:focus {
+  background: #2D273D;
+  border-color: #FF7A6B;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.3), 0 0 0 3px rgba(255, 122, 107, 0.25);
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(224, 85, 75, 0.25);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(224, 85, 75, 0.45);
+}
+
+/* Leaflet dark-mode overrides */
+.dark .leaflet-layer,
+.dark .leaflet-control-zoom-in,
+.dark .leaflet-control-zoom-out,
+.dark .leaflet-control-attribution {
+  filter: brightness(0.75) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7);
+}
+.dark .leaflet-container {
+  background: #14121C !important;
+}
