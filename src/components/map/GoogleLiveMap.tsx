@@ -24,22 +24,38 @@ export interface GoogleLiveMapProps {
 
 let googleScriptLoadingPromise: Promise<void> | null = null;
 
-export function loadGoogleMaps(apiKey: string): Promise<void> {
+export function loadGoogleMaps(apiKey: string, onAuthFailure?: () => void): Promise<void> {
   if (typeof window === 'undefined') return Promise.reject(new Error('Window undefined'));
   if ((window as any).google?.maps) return Promise.resolve();
   if (googleScriptLoadingPromise) return googleScriptLoadingPromise;
 
   googleScriptLoadingPromise = new Promise((resolve, reject) => {
+    let hasSettled = false;
+
+    const handleFailure = (err: any) => {
+      if (hasSettled) return;
+      hasSettled = true;
+      googleScriptLoadingPromise = null;
+      if (onAuthFailure) onAuthFailure();
+      reject(err);
+    };
+
     (window as any).gm_authFailure = () => {
-      console.warn('Google Maps authentication failure detected');
-      reject(new Error('Google Maps authentication failed'));
+      console.warn('Google Maps authentication failure detected (gm_authFailure)');
+      handleFailure(new Error('Google Maps authentication failed'));
     };
 
     const script = document.createElement('script');
     script.src = `https://maps.googleapis.com/maps/api/js?loading=async&libraries=marker,geometry&v=weekly&key=${apiKey}`;
     script.async = true;
-    script.onload = () => resolve();
-    script.onerror = (err) => reject(err);
+    script.onload = () => {
+      if (hasSettled) return;
+      hasSettled = true;
+      resolve();
+    };
+    script.onerror = (err) => {
+      handleFailure(err);
+    };
     document.head.appendChild(script);
   });
 
@@ -165,7 +181,18 @@ export const GoogleLiveMap: React.FC<GoogleLiveMapProps> = ({
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
 
-    loadGoogleMaps(apiKey)
+    // Listen for runtime gm_authFailure in case Google fires it after script load
+    const prevGmAuth = (window as any).gm_authFailure;
+    (window as any).gm_authFailure = () => {
+      console.warn('Google Maps authentication failed at runtime, falling back to Leaflet');
+      googleScriptLoadingPromise = null;
+      if (onAuthFailure) onAuthFailure();
+      if (prevGmAuth && prevGmAuth !== (window as any).gm_authFailure) {
+        try { prevGmAuth(); } catch {}
+      }
+    };
+
+    loadGoogleMaps(apiKey, onAuthFailure)
       .then(() => {
         if (!mapContainerRef.current) return;
 
@@ -201,7 +228,8 @@ export const GoogleLiveMap: React.FC<GoogleLiveMapProps> = ({
         initVehicles();
       })
       .catch((err) => {
-        console.error('Failed to load Google Maps:', err);
+        console.error('Failed to load Google Maps, falling back to Leaflet:', err);
+        googleScriptLoadingPromise = null;
         if (onAuthFailure) onAuthFailure();
       });
 

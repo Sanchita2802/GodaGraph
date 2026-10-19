@@ -76,14 +76,31 @@ export const PlanPage: React.FC<PlanPageProps> = ({ currentLang }) => {
   const [useGoogleGeocoding, setUseGoogleGeocoding] = useState<boolean>(false);
 
   useEffect(() => {
-    fetch('/api/config')
-      .then((res) => res.json())
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    fetch('/api/config', { signal: controller.signal })
+      .then(async (res) => {
+        clearTimeout(timeoutId);
+        const contentType = res.headers.get('content-type') || '';
+        if (!res.ok || !contentType.includes('application/json')) {
+          return null;
+        }
+        return res.json();
+      })
       .then((data) => {
         if (data?.useGoogleGeocoding) {
           setUseGoogleGeocoding(true);
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        clearTimeout(timeoutId);
+        console.warn('Could not load /api/config in PlanPage:', err);
+      });
+
+    return () => {
+      controller.abort();
+    };
   }, []);
 
   // Preference Toggles & Environmental Context

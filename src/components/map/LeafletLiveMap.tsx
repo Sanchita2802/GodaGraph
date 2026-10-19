@@ -8,6 +8,7 @@ import { useIsDark } from '../../hooks/useIsDark';
 import { JourneyRoute, TransitNode } from '../../types';
 import { ViewportGridIndex } from '../../dsa/ViewportGridIndex';
 import osmStopsData from '../../data/osmStops.generated.json';
+import { TILE_PROVIDERS, evaluateTileFailover, TileProviderConfig } from './tileProviders';
 
 export interface LeafletLiveMapProps {
   selectedRoute?: JourneyRoute | null;
@@ -17,6 +18,7 @@ export interface LeafletLiveMapProps {
   showSimulatedBuses?: boolean;
   userLocation?: { lat: number; lng: number; accuracy?: number } | null;
   showSimulatedVehicles?: boolean;
+  onDebugInfo?: (info: { tileProvider: string; tileErrorCount: number }) => void;
 }
 
 interface SimulatedVehicle {
@@ -39,6 +41,7 @@ export const LeafletLiveMap: React.FC<LeafletLiveMapProps> = ({
   showSimulatedBuses = true,
   userLocation,
   showSimulatedVehicles = true,
+  onDebugInfo,
 }) => {
   const isDarkMode = useIsDark();
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -50,6 +53,13 @@ export const LeafletLiveMap: React.FC<LeafletLiveMapProps> = ({
   const userLocLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const animFrameRef = useRef<number | null>(null);
   const gridIndexRef = useRef<ViewportGridIndex>(new ViewportGridIndex(0.015));
+
+  const currentProviderIndexRef = useRef<number>(0);
+  const errorTimesRef = useRef<number[]>([]);
+  const loadTimesRef = useRef<number[]>([]);
+  const [basemapUnavailable, setBasemapUnavailable] = useState<boolean>(false);
+  const [tileErrorCount, setTileErrorCount] = useState<number>(0);
+  const [activeProviderName, setActiveProviderName] = useState<string>(TILE_PROVIDERS[0].name);
 
   const [simulatedVehicles, setSimulatedVehicles] = useState<SimulatedVehicle[]>([]);
 
@@ -162,6 +172,31 @@ export const LeafletLiveMap: React.FC<LeafletLiveMapProps> = ({
     });
   };
 
+  // Helper to create and attach tile layer for a given provider
+  const createTileLayerForProvider = (
+    provider: TileProviderConfig,
+    map: L.Map,
+    onTileError: () => void,
+    onTileLoad: () => void
+  ): L.TileLayer => {
+    const options: L.TileLayerOptions = {
+      attribution: provider.attribution,
+      maxZoom: provider.maxZoom || 19,
+      detectRetina: true,
+      keepBuffer: 4,
+      updateWhenIdle: true,
+    };
+    if (provider.subdomains) {
+      options.subdomains = provider.subdomains;
+    }
+
+    const layer = L.tileLayer(provider.url, options);
+    layer.on('tileerror', onTileError);
+    layer.on('tileload', onTileLoad);
+    layer.addTo(map);
+    return layer;
+  };
+
   // Initialize Leaflet Map
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
@@ -172,16 +207,86 @@ export const LeafletLiveMap: React.FC<LeafletLiveMapProps> = ({
       zoomControl: true,
     });
 
-    const tileUrl = isDarkMode
-      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-      : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+    const handleTileLoad = () => {
+      const now = Date.now();
+      loadTimesRef.current.push(now);
+      const cutoff = now - 10000;
+      loadTimesRef.current = loadTimesRef.current.filter((t) => t >= cutoff);
+      errorTimesRef.current = errorTimesRef.current.filter((t) => t >= cutoff);
+    };
 
-    const tileLayer = L.tileLayer(tileUrl, {
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>',
-      maxZoom: 19,
-    }).addTo(map);
+    const handleTileError = () => {
+      const now = Date.now();
+      errorTimesRef.current.push(now);
+      setTileErrorCount((c) => {
+        const next = c + 1;
+        if (onDebugInfo) {
+          onDebugInfo({
+            tileProvider: TILE_PROVIDERS[currentProviderIndexRef.current]?.name || 'Unknown',
+            tileErrorCount: next,
+          });
+        }
+        return next;
+      });
 
+      const cutoff = now - 10000;
+      errorTimesRef.current = errorTimesRef.current.filter((t) => t >= cutoff);
+      loadTimesRef.current = loadTimesRef.current.filter((t) => t >= cutoff);
+
+      const decision = evaluateTileFailover(
+        currentProviderIndexRef.current,
+        errorTimesRef.current.length,
+        loadTimesRef.current.length,
+        6,
+        TILE_PROVIDERS.length
+      );
+
+      if (decision.shouldFailover && decision.nextIndex !== null) {
+        const nextProvider = TILE_PROVIDERS[decision.nextIndex];
+        console.warn(
+          `[GodaGraph] Basemap tile failure threshold reached on ${TILE_PROVIDERS[currentProviderIndexRef.current].name}. Failing over to: ${nextProvider.name}`
+        );
+        currentProviderIndexRef.current = decision.nextIndex;
+        errorTimesRef.current = [];
+        loadTimesRef.current = [];
+        setActiveProviderName(nextProvider.name);
+        if (onDebugInfo) {
+          onDebugInfo({
+            tileProvider: nextProvider.name,
+            tileErrorCount: tileErrorCount + 1,
+          });
+        }
+
+        if (tileLayerRef.current && mapInstanceRef.current) {
+          mapInstanceRef.current.removeLayer(tileLayerRef.current);
+          tileLayerRef.current = createTileLayerForProvider(
+            nextProvider,
+            mapInstanceRef.current,
+            handleTileError,
+            handleTileLoad
+          );
+        }
+      } else if (decision.allFailed) {
+        console.warn('[GodaGraph] All configured keyless tile providers failed.');
+        setBasemapUnavailable(true);
+      }
+    };
+
+    const initialProvider = TILE_PROVIDERS[0];
+    setActiveProviderName(initialProvider.name);
+    if (onDebugInfo) {
+      onDebugInfo({
+        tileProvider: initialProvider.name,
+        tileErrorCount: 0,
+      });
+    }
+
+    const tileLayer = createTileLayerForProvider(
+      initialProvider,
+      map,
+      handleTileError,
+      handleTileLoad
+    );
     tileLayerRef.current = tileLayer;
 
     routeLayerGroupRef.current = L.layerGroup().addTo(map);
@@ -209,20 +314,15 @@ export const LeafletLiveMap: React.FC<LeafletLiveMapProps> = ({
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       clearTimeout(debounceTimer);
+      if (tileLayerRef.current) {
+        tileLayerRef.current.off('tileerror');
+        tileLayerRef.current.off('tileload');
+      }
       map.remove();
       mapInstanceRef.current = null;
       tileLayerRef.current = null;
     };
   }, []);
-
-  // Update tile layer URL dynamically when theme changes
-  useEffect(() => {
-    if (!tileLayerRef.current) return;
-    const nextUrl = isDarkMode
-      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-      : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-    tileLayerRef.current.setUrl(nextUrl);
-  }, [isDarkMode]);
 
   // Render User Location Blue Dot & Accuracy Circle
   useEffect(() => {
@@ -518,7 +618,17 @@ export const LeafletLiveMap: React.FC<LeafletLiveMapProps> = ({
 
   return (
     <div className={`relative w-full h-full min-h-[420px] rounded-[28px] overflow-hidden ${className}`}>
-      <div ref={mapContainerRef} className="w-full h-full z-10" />
+      <div
+        ref={mapContainerRef}
+        className={`w-full h-full z-10 ${isDarkMode ? 'gg-dark-tiles' : ''}`}
+      />
+
+      {/* Basemap temporary unavailable warning if all providers fail */}
+      {basemapUnavailable && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-amber-500/95 dark:bg-amber-600/95 text-white text-xs px-3.5 py-1.5 rounded-full shadow-lg font-medium backdrop-blur-sm pointer-events-none">
+          Basemap temporarily unavailable
+        </div>
+      )}
 
       {/* Simulated Live Feed Badge */}
       <div className="absolute top-4 right-4 z-20 bg-white/90 dark:bg-[#1F1B2B]/90 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-black/5 dark:border-white/10 shadow-md text-xs font-semibold flex items-center gap-2">

@@ -17,6 +17,22 @@ const isDev = process.env.NODE_ENV !== 'production';
 
 app.use(express.json());
 
+// Ensure incoming serverless requests matching /config or /api/config both resolve cleanly
+app.use((req, _res, next) => {
+  if (req.url && !req.url.startsWith('/api') && !req.url.startsWith('/@') && !req.url.startsWith('/src')) {
+    const queryIdx = req.url.indexOf('?');
+    const pathname = queryIdx >= 0 ? req.url.slice(0, queryIdx) : req.url;
+    if (
+      pathname === '/config' ||
+      pathname.startsWith('/gemini/') ||
+      pathname.startsWith('/geo/')
+    ) {
+      req.url = '/api' + req.url;
+    }
+  }
+  next();
+});
+
 // Initialize Gemini SDK if API key exists
 const apiKey = process.env.GEMINI_API_KEY;
 let aiClient: GoogleGenAI | null = null;
@@ -30,11 +46,12 @@ if (apiKey) {
 
 const MODEL_CHAIN = [
   process.env.GEMINI_MODEL,
-  'gemini-3.8-flash',
   'gemini-2.5-flash',
   'gemini-flash-latest',
+  'gemini-2.0-flash',
 ].filter(Boolean) as string[];
 
+// Note: cachedWorkingModel is kept in-memory per Node process / serverless instance
 let cachedWorkingModel: string | null = null;
 let hasLoggedModel = false;
 
@@ -622,6 +639,16 @@ async function startServer() {
   });
 }
 
-startServer().catch((err) => {
-  console.error('Error starting server:', err);
-});
+export { app, startServer };
+export default app;
+
+const isDirectRun =
+  Boolean(process.argv[1] && (process.argv[1].endsWith('server.ts') || process.argv[1].endsWith('server.js'))) ||
+  Boolean(import.meta.url && process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]));
+
+// Start the server only when executed directly and not inside a Vercel serverless environment
+if (isDirectRun && !process.env.VERCEL) {
+  startServer().catch((err) => {
+    console.error('Error starting server:', err);
+  });
+}

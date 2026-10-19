@@ -166,6 +166,55 @@ npm run build
 
 ---
 
-## 7. Academic Disclaimer
+## 7. Deploying to Vercel
+
+GodaGraph is configured for seamless deployment to Vercel as a hybrid application: the React frontend builds statically via Vite, while the Express backend runs as a Vercel Serverless Function via `api/index.ts` and `vercel.json`.
+
+### Environment Variables on Vercel
+Set the following variables in the **Vercel Project Settings → Environment Variables** (for **Production**, **Preview**, and **Development**):
+
+| Variable | Required? | Type | Purpose |
+|---|---|---|---|
+| `GEMINI_API_KEY` | **Recommended** | Server-only | Required for AI NLP queries, Local Friend tips, and fare fits |
+| `GEMINI_MODEL` | Optional | Server-only | Override default Gemini model (defaults to `gemini-2.5-flash`) |
+| `GOOGLE_MAPS_API_KEY` | Optional | Server-only | Google Maps JavaScript API key; if omitted, Leaflet OSM runs automatically |
+| `GOOGLE_MAPS_MAP_ID` | Optional | Server-only | Google Maps vector Map ID (defaults to `DEMO_MAP_ID`) |
+| `ENABLE_GOOGLE_ROUTES` | Optional | Server-only | Set to `"true"` to enable real road geometry via Google Routes |
+| `ENABLE_GOOGLE_GEOCODING` | Optional | Server-only | Set to `"true"` to enable Google client geocoder fallback |
+| `NOMINATIM_CONTACT_EMAIL` | Optional | Server-only | Contact email for OpenStreetMap Nominatim User-Agent |
+| `GEOCODER_PROVIDER` | Optional | Server-only | `auto` (default) \| `nominatim` \| `local` |
+| `VITE_GOOGLE_MAPS_API_KEY` | Optional | Public/Client | Direct build-time fallback if `/api/config` is unavailable |
+
+> **IMPORTANT**: After adding or modifying environment variables in the Vercel dashboard, you **must trigger a new deployment** (select **Redeploy** with **Clear build cache** unchecked or checked) for the changes to take effect in serverless functions.
+
+### Restricting Your Google Maps API Key
+Browser API keys are inherently visible in client network traffic. Always protect your key in the [Google Cloud Console](https://console.cloud.google.com/google/maps-apis/credentials):
+1. **Application restrictions**: Select **Websites (HTTP referrers)** and add:
+   - `https://<your-project>.vercel.app/*`
+   - `https://*.vercel.app/*`
+   - `https://your-custom-domain.com/*` (if using a custom domain)
+   - `http://localhost:*` (for local development)
+2. **API restrictions**: Select **Restrict key** and enable **ONLY**:
+   - `Maps JavaScript API`
+
+### Architecture & Routing on Vercel
+- **Serverless API**: `vercel.json` routes `/api/(.*)` requests directly to `api/index.ts`, which runs the Express application with all Gemini endpoints, configuration handlers, and reverse geocoding proxies.
+- **SPA Deep Linking**: A catch-all rewrite sends all non-API paths (`/((?!api/).*)`) to `/index.html`, allowing React Router routes (`/plan`, `/explore`, `/fares`, `/lab`, `/about`) to refresh cleanly without 404s.
+- **In-Memory Caches**: Note that `geoServerCache` and Gemini model health state persist per warm serverless container instance.
+
+### Troubleshooting
+
+| Issue | Root Cause | Solution |
+|---|---|---|
+| **Watermark "API KEY REQUIRED"** | Legacy CARTO tiles required paid credentials | Resolved: Basemap now uses keyless OpenStreetMap, Esri World Street Map, and OpenTopoMap with automated failover. |
+| **Flat Grey Map** | Google Maps key missing, invalid, or referrer-restricted | Check browser console. If `gm_authFailure` triggers, GodaGraph automatically falls back to keyless Leaflet. For Google Maps, verify HTTP referrer settings in Google Cloud Console. |
+| **`/api/config` returns HTML (DOCTYPE)** | Express server didn't run on Vercel; SPA catch-all caught `/api` | Ensure `vercel.json` is deployed in the repo root. Verify that `/api/(.*)` rewrite targets `/api`. |
+| **404 on page refresh on `/plan` or `/explore`** | Static hosting lacking SPA rewrite rules | Handled by `vercel.json` catch-all rule `{ "source": "/((?!api/).*)", "destination": "/index.html" }`. |
+| **Gemini features return fallback results** | `GEMINI_API_KEY` not configured in Vercel dashboard | Add `GEMINI_API_KEY` in Vercel Project Settings → Environment Variables and trigger a **Redeploy**. |
+| **Debug Mode Inspection** | Need to verify active map renderer and tile status | Append `?debugmap=1` to any URL (e.g. `/plan?debugmap=1`) to view a live diagnostic overlay showing renderer, config status, active tile provider, and error counts. |
+
+---
+
+## 8. Academic Disclaimer
 
 Transit stop coordinates, bus timetables, and fares represent student-collected seed data for educational and research evaluation. GodaGraph has no affiliation with NMC Citilinc, MSRTC, Uber, or Ola. All vehicle symbols and brand mentions are strictly for informational academic study.

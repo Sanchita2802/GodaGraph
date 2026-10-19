@@ -109,12 +109,9 @@
   background: rgba(224, 85, 75, 0.45);
 }
 
-/* Leaflet dark-mode overrides */
-.dark .leaflet-layer,
-.dark .leaflet-control-zoom-in,
-.dark .leaflet-control-zoom-out,
-.dark .leaflet-control-attribution {
-  filter: brightness(0.75) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7);
+/* Leaflet dark-mode overrides: filter applied strictly to tile pane */
+.gg-dark-tiles .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9) saturate(0.8);
 }
 .dark .leaflet-container {
   background: #14121C !important;
